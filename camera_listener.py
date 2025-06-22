@@ -6,6 +6,13 @@ import time
 from pynput import keyboard
 from io import BytesIO
 from PIL import Image
+import asyncio
+from lmnt.api import Speech
+import dotenv
+import os   
+
+dotenv.load_dotenv()  # Load environment variables from .env file
+
 
 class CameraToGemini:
     def __init__(self):
@@ -60,33 +67,35 @@ class CameraToGemini:
             return None
     
     def send_to_api(self, image_data):
-        """Send the captured image to the Gemini API"""
+        """Send the captured image to the Gemini API and generate audio from the response"""
         try:
             print("Sending image to API...")
-            
-            # Send as multipart form data (file upload)
             files = {
                 'file': ('image.jpg', image_data, 'image/jpeg')
             }
-            
             response = requests.post(
                 self.api_url, 
                 files=files,
-                timeout=30  # 30 second timeout
+                timeout=30
             )
-            
             if response.status_code == 200:
                 try:
                     result = response.json()
                     print("API Response:")
-                    print(json.dumps(result, indent=2))
+                    print(json.dumps(result, indent=2))                    # Extract the description text (adjust key as needed)
+                    description = result.get('description') or result.get('text') or str(result)
+                    if description:
+                        print("Generating audio from description...")
+                        # Synthesize speech using LMNT (async)
+                        asyncio.run(self.generate_audio(description))
+                    else:
+                        print("No description found in API response.")
                 except json.JSONDecodeError:
                     print("API Response (text):")
                     print(response.text)
             else:
                 print(f"API Error: Status {response.status_code}")
                 print(response.text)
-                
         except requests.exceptions.Timeout:
             print("Error: Request timed out")
         except requests.exceptions.ConnectionError:
@@ -132,6 +141,19 @@ class CameraToGemini:
         cv2.destroyAllWindows()
         print("Cleanup completed")
     
+    async def generate_audio(self, text):
+        """Generate audio from text using LMNT"""
+        try:
+            async with Speech() as speech:
+                synthesis = await speech.synthesize(text, 'lily')
+            
+            # Save audio to file (LMNT returns MP3 format)
+            with open('output.mp3', 'wb') as f:
+                f.write(synthesis['audio'])
+            print("Audio saved as output.mp3")
+        except Exception as e:
+            print(f"Error generating audio: {e}")
+    
     def run(self):
         """Main program loop"""
         print("Initializing Camera to Gemini program...")
@@ -161,4 +183,4 @@ class CameraToGemini:
 
 if __name__ == "__main__":
     app = CameraToGemini()
-    app.run() 
+    app.run()
